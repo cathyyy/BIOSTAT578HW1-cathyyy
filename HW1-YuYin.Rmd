@@ -1,0 +1,54 @@
+Homework 1 for BIOSTAT578  Yu Yin
+========================================================
+```{r eval=FALSE}
+source("http://bioconductor.org/biocLite.R")
+biocLite()
+library(GEOmetadb)
+vignette("GEOmetadb")
+biocLite(c("GEOmetadb", "GEOquery"))
+browseVignettes(package = "GEOmetadb")
+geo_con <- dbConnect(SQLite(),'GEOmetadb.sqlite')
+```
+For homework one of BIOSTAT578:
+
+```{r eval=FALSE}
+dbGetQuery(geo_con,"SELECT gse.title,gse.ID,gpl.ID,gpl.manufacturer,gpl.description
+            FROM (gse JOIN gse_gpl ON gse.gse=gse_gpl.gse) j 
+           JOIN gpl ON j.gpl=gpl.gpl 
+           WHERE  gse.title LIKE '%HCV%' AND gpl.manufacturer LIKE 'Illumina%' AND 
+           gse.contact LIKE '%Yale%';")
+```
+
+We can also do it using data.tables:
+
+```{r eval=FALSE}
+library(data.table)
+dt.gse <- data.table(dbGetQuery(geo_con,"SELECT * FROM gse"))
+setkey(dt.gse,gse)
+dt.gpl <- data.table(dbGetQuery(geo_con,"SELECT * FROM gpl"))
+setkey(dt.gpl, gpl)
+dt.gsegpl <- data.table(dbGetQuery(geo_con,"SELECT * FROM gse_gpl"))
+setkey(dt.gsegpl, gse)
+```
+
+Second, merge the data.tables we get:
+
+```{r eval=FALSE}
+dt.merge<-merge(dt.gse,dt.gsegle,all=FALSE)
+setkey(dt.merge,gpl)
+dt.m <- merge(dt.merge,dt.gpl)
+```
+
+Lastly, we can select the information we want steps by steps:
+
+```{r eval=FALSE}
+dt.select <- dt.m[title.x %like% "HCV"]
+dt.select <- dt.select[manufacturer %like% "Illumina"]
+dt.select <- dt.select[contact.x %like% "Yale"]
+```
+
+We can show the results by this serach:
+
+```{r eval=FALSE}
+dt.select[,list(title.x,ID.x,ID.y,manufacturer,description)]
+```
