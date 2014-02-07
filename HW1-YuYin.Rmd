@@ -33,7 +33,7 @@ setkey(dt.gsegpl, gse)
 
 Second, merge the data.tables we get:
 
-```{r eval=FALSE}
+```{r eval=FALSE} 
 dt.merge<-merge(dt.gse,dt.gsegle,all=FALSE)
 setkey(dt.merge,gpl)
 dt.m <- merge(dt.merge,dt.gpl)
