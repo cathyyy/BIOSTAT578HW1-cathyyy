@@ -1,0 +1,289 @@
+Analysis and design of RNA sequencing experiments for identifying isoform regulation
+========================================================
+author: Elisabeth Rosenthal, Yu Yin, and Xieting Zhang
+date: March 11th, 2014
+
+
+Background: mRNA and isoforms
+========================================================
+
+![alt text](Splicing_overview-jpg.PNG)
+***
+- The same DNA has the same pre-mRNA
+- After splicing, the same pre-mRNA could have different mRNA
+- Those different mRNA could have different proteins
+
+Introduction: MISO model
+========================================================
+
+- MISO (Mixture-of-isoforms): a probabilistic framework that quantitates the expression level of alternatively spliced genes from RNA-Seq data
+
+- It also identifies differentially regulated isoforms or exons across samples
+
+- It uses Bayesian inference to compute the probability that a read orginated from a particular isoform
+
+How MISO works:
+========================================================
+
+![alt text](work1.PNG)
+***
+- Use sequence reads aligned to splice-junction sequences
+- Estimation algorithm: based on sampling and falls in the family of techniques "MCMC"
+
+
+Features:
+========================================================
+
+- Estimates of 'Percentage Spliced In': $\Psi$ values
+- Percent Expression estimates at the alternative splicing event level
+- CI for percent expression estimates
+- Basic functionality for use on cluster
+
+Bayesian inference:
+========================================================
+
+Bayes' rule:
+
+$$P(H|E)=P(E|H)*P(H)/P(E)$$
+
+The prior distribution:   $p(\theta|\alpha)$
+
+The likelihood:   $p(X|\theta)$
+
+The marginal likelihood: $p(X|\alpha)=\int_\theta p(X|\theta)p(\theta|\alpha) d\theta$
+
+The posterior distribution: 
+$p(\theta|X,\alpha)={p(X|\theta)p(\theta|\alpha)}/{p(X|\alpha)}$
+
+From this distribution, one can make inferences about the parameters $\theta$, or in our case $\psi$.
+
+Bayesian in MISO:
+========================================================
+
+![alt text](work2.PNG)
+
+Graphical model representation:
+========================================================
+
+![alt text](work3.PNG)
+
+***
+-For a single gene with K isoforms
+
+-Shaded nodes: observed variables
+
+-Unshaded nodes:random variables
+
+Comparison:
+========================================================
+
+![alt text](work4.PNG)
+MISO model uses the most information!
+
+Includes information from Paired end reads:
+========================================================
+![](paired-ends.png)
+
+- Given approximate read length & length of each sequenced end, can use alignment distance to infer exon inclusion
+- Large alignment distance between non-adjacent exons implies less likelihood for the intervening exon   
+
+
+Studying the splicing factor hnRNP H 
+========================================================
+![alt text](nan1.png)
+
+What is the function of splicing factor hnRNP H?
+***
+- Assisting the RNA splicing process
+- If hnRNP H sticks to introns, then increase the splicing of exons
+- If hnRNP H sticks to exons, then suppressing the splicing of exons
+- Calucate the Bayes Factor (BF) for $\Delta\psi$, where $$BF = 
+\frac{\text{posterior odds}(\Delta\psi\ne0)}{\text{prior odds}(\Delta\psi\ne0)}$$
+
+
+hnRNP H and tandem alternative cleavage and polyadenylation (APA) 
+========================================================
+
+
+- We want to examine whether hnRNP H has a role in 
+regulating tandem alternative cleavage and polyadenylation (APA).
+
+- Given different levels of hnRNP H, the resulting mRNAs may have longer or shorter
+3' untranslated regions (3' UTRs)
+
+
+What the MISO model has done 
+===========================================================
+
+- The MISO model coded isoforms in a general way as lists of 
+exon coordinates, APA event can be analyzed similarly to 
+alternative splicing events.
+
+- My understanding of what the data looks like is:
+  1. For each read, we would have indicator variables for exons.
+     The indicator variable for a certain exon will equal to 1 if that 
+     read contains information on that exon
+  2. Indicator variable for treatment conditions: control or knockdown
+  3. Covariates: length of 3' UTR, length of reads, insert length etc.
+
+
+
+Results from MISO model
+=============================================================
+
+![alt text](figure4biostat.jpg)
+
+The authors have used the NFATC4 gene in the experiment.
+The control group has normal hnRNP H levels while the 
+knockdown group has lower levels of hnRNP H.
+
+Getting the data
+========================================================
+```
+library(data.table)
+source("http://bioconductor.org/biocLite.R")
+biocLite()
+library(GEOmetadb)
+library(GEOquery)
+gds <- getGEO("GSE23694")
+getGEOSuppFiles("GSE23694", makeDirectory = TRUE, baseDir = "./")
+untar("./GSE23694/GSE23694_RAW.tar", exdir="./GSE23694", tar = Sys.getenv("TAR"))
+```
+There are 8 gzipped SAM files.
+
+
+The Files
+========================================================
+ GSM581051_s_1.sam  
+ GSM581052_s_6.sam  
+ GSM581052_s_7.sam  
+ GSM581052_s_8.sam  
+ GSM582290_lko100.combined.sam
+ GSM582293_kd100.combined.sam
+ GSM582295_lko280.combined.sam
+ GSM582297_kd280.combined.sam
+
+
+Problem 1
+========================================================
+The GSM58105*.sam files have errors in them. Trying to convert them to BAM files resulted in errors.
+```
+samtools view -bS GSM581051_s_1.sam > GSM581051_s_1.bam
+```
+Results in the error:
+```
+[samopen] SAM header is present: 26 sequences.
+Parse error at line 53: sequence and quality are inconsistent
+Aborted (core dumped)
+```
+Similiar errors seen for the other 3 files. 
+
+Problem 2
+========================================================
+The other four files (*.combined.sam) are used in Supplemental Figure 8, but not in MISO. We tried to start with panel (a): Distribution of insert lengths.
+
+***
+![C](SF8a.png)
+
+How to get distribution of insert lengths, part 1
+========================================================
+A google search found a program called 'picard' which can be used to calculate insert lengths. 
+Before calculating insert lengths, we need to creat bam files, sort and then index them, as follows:
+```
+samtools view -bS GSM582290_lko100.combined.sam > GSM582290_lko100.combined.bam
+
+samtools sort GSM582290_lko100.combined.bam GSM582290_lko100.combined.sorted
+
+samtools index GSM582290_lko100.combined.sorted.bam
+```
+
+How to get distribution of insert lengths, part 2
+========================================================
+Use picard command:
+```
+java -Xmx2g -jar picard-tools-1.108/CollectInsertSizeMetrics.jar HISTOGRAM_FILE= hist.ps INPUT= GSM582290_lko100.combined.sorted.bam OUTPUT= GSM582290_lko100.insert-size.out
+```
+which returns the following error:
+```
+Exception in thread "main" net.sf.samtools.SAMFormatException: SAM validation error: ERROR: Record 1, Read name HWI-EAS413_8:5:16:1483:1187, Mapped mate should have mate reference name
+```
+
+Did we download the picard software appropriately?
+========================================================
+We tried to check the index stats 
+```
+java -Xmx2g -jar picard-tools-1.108/BamIndexStats.jar INPUT= GSM582290_lko100.combined.sorted.bam
+``` 
+Subset of Results:
+```
+chr10 length=   129993255       Aligned= 270494 Unaligned= 0
+chr11 length=   121843856       Aligned= 623574 Unaligned= 0
+chr12 length=   121257530       Aligned= 184132 Unaligned= 0
+chr13 length=   120284312       Aligned= 219351 Unaligned= 0
+chr14 length=   125194864       Aligned= 215797 Unaligned= 0
+```
+So, we think that problem might be with the file
+
+What if we use picard to sort and index?
+========================================================
+```
+java -Xmx2g -jar picard-tools-1.108/SortSam.jar INPUT=GSM582290_lko100.combined.sam OUTPUT= GSM582290_lko100.combined.psort.sam SORT_ORDER=coordinate
+```
+results in the error:
+```{r, eval=FALSE}
+Exception in thread "main" net.sf.samtools.SAMFormatException: Error parsing text SAM file. MRNM not specified but flags indicate mate mapped; Line 25
+```
+
+What next?
+========================================================
+1. Try to download GSM581051_s_1.sam.gz directly from the GEO page.
+ - Same error as before
+
+2. Email the authors for suggestions
+
+3. Look for other papers that use MISO
+ - 98 articles cite this paper (according to Web of Science)
+ - Found first 5 that might actually use MISO, scanning the titles/abstracts
+
+Other possible papers that we could use
+========================================================
+- Transcriptome Profiling of the Cancer, Adjacent Non-Tumor and Distant Normal Tissues from a Colorectal Cancer Patient by Deep Sequencing
+>Not obvious where they publish results from MISO. Looks like they used it to make some pretty figures, but did not give estimates of psi.
+
+- Alternative Splicing Regulated by Butyrate in Bovine Epithelial Cells
+>Data is not in GEO
+
+Other possible papers that we could use (cont'd)
+========================================================
+- Integrative Genome-wide Analysis Reveals Cooperative Regulation of Alternative Splicing by hnRNP Proteins
+>Doesn't look like they use MISO. At least not clear.
+
+- Alternative Splicing of RNA Triplets Is Often Regulated and Accelerates Proteome Evolution
+>Don't use MISO
+
+Other possible papers that we could use (cont'd)
+========================================================
+- CTCF-promoted RNA polymerase II pausing links DNA methylation to splicing
+
+>Uses MISO and in GSE. Available files are BED files. May be able to use bedtools to get the data in the correct format.
+
+
+General Critiques
+========================================================
+1. Definition of the Bayes Factor not accurate. Authors define it as $$\frac{\text{Posterior P}(\Delta\psi\ne0)}{\text{P}_{Null}(\Delta\psi\ne0)}$$
+2. Normalization over Isoform length is used. Possible that normalization over samples/flow cells/etc..., is not used becaused proportions, not total counts, are estimated. By using proportions of isoforms within a gene, the method accounts for differences in total counts of RNA from a single gene.
+ - However, accuracy of estimates does depend on total counts
+
+General Critiques (cont'd)
+========================================================
+3\. Authors present simulations to compare methods only in case where $\psi=0.5$.   
+4\. In examples with four isoforms, authors do not include CI on $\psi$
+
+Potential Uses
+========================================================
+Compare isoform distributions between
+  - cancerous (diseased) and non-cancerous (healthy) tissues
+  - between different tissues (i.e., fat vs liver)
+  - species, within same tissue
+  - methylation states
+  - expression of downstream genes  
